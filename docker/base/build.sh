@@ -176,11 +176,36 @@ if [ "$TARGETS" == "" ]; then
   TARGETS="./."
 fi
 
+# Function that allows us to pass arbitrary environment variables to the Go compiler for a specific target.
+# If you for instance use the xgo command with a target on the following form:
+#     --targets=linux/mipsle/GOMIPS=softfloat:GO_FLAG_X=1,darwin/amd64
+# Then the two environment variables GO_MIPS and GO_FLAG_X will be set with their respective values before the
+# compiler is invoked for the linux/mipsle target, but not for darwin/amd64.
+targetEnvironment() {
+  local action=$1 env=$2
+  local envs=$(echo $env | tr ":" "\n")
+  for e in $envs; do
+    case $action in
+    "set")
+      export $e
+      ;;
+    "clear")
+      local var=`echo $e | cut -d '=' -f 1`
+      unset $var
+      ;;
+    esac
+  done
+}
+
 # Build for each requested platform individually
 for TARGET in $TARGETS; do
-  # Split the target into platform and architecture
+  # Split the target into platform, architecture and extra environment variables
   XGOOS=`echo $TARGET | cut -d '/' -f 1`
   XGOARCH=`echo $TARGET | cut -d '/' -f 2`
+  XGOENV=`echo $TARGET | cut -d '/' -f 3`
+
+  # Set the extra environment variables passed in to this particular target
+  targetEnvironment set "$XGOENV"
 
   # Check and build for Linux targets
   if ([ $XGOOS == "." ] || [ $XGOOS == "linux" ]) && ([ $XGOARCH == "." ] || [ $XGOARCH == "amd64" ]); then
@@ -417,6 +442,9 @@ for TARGET in $TARGETS; do
     # Remove any automatically injected deployment target vars
     unset MACOSX_DEPLOYMENT_TARGET
   fi
+
+  # Clear the environment variables set for this target before continuing with next
+  targetEnvironment clear "$XGOENV"
 done
 
 # Clean up any leftovers for subsequent build invocations
